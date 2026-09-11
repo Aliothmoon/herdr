@@ -238,6 +238,9 @@ fn sibling_theme_names(name: &str) -> (String, String) {
         "rose-pine" | "rosepine" | "rose-pine-dawn" | "rosepine-dawn" | "dawn" => {
             ("rose-pine".to_string(), "rose-pine-dawn".to_string())
         }
+        "everforest" | "everforest-dark" | "everforest-light" => {
+            ("everforest".to_string(), "everforest-light".to_string())
+        }
         _ => (name.to_string(), name.to_string()),
     }
 }

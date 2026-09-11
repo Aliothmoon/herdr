@@ -20,6 +20,8 @@ pub const THEME_NAMES: &[&str] = &[
     "rose-pine",
     "rose-pine-dawn",
     "vesper",
+    "everforest",
+    "everforest-light",
 ];
 
 pub(crate) fn canonical_theme_name(name: &str) -> Option<&'static str> {
@@ -42,6 +44,8 @@ pub(crate) fn canonical_theme_name(name: &str) -> Option<&'static str> {
         "rose-pine" | "rosepine" => Some("rose-pine"),
         "rose-pine-dawn" | "rosepine-dawn" | "dawn" => Some("rose-pine-dawn"),
         "vesper" => Some("vesper"),
+        "everforest" | "everforest-dark" => Some("everforest"),
+        "everforest-light" => Some("everforest-light"),
         _ => None,
     }
 }
@@ -256,7 +260,13 @@ light_name = "lattee"
 
     #[test]
     fn theme_name_aliases_are_valid() {
-        for name in ["catppuccin-mocha", "tokyonight", "gruvbox-dark", "dawn"] {
+        for name in [
+            "catppuccin-mocha",
+            "tokyonight",
+            "gruvbox-dark",
+            "dawn",
+            "everforest-dark",
+        ] {
             assert!(canonical_theme_name(name).is_some(), "alias: {name}");
         }
     }

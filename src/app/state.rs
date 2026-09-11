@@ -524,6 +524,56 @@ impl Palette {
         }
     }
 
+    /// Everforest Dark (medium) — warm green palette with stronger muted-text contrast.
+    pub fn everforest() -> Self {
+        Self {
+            accent: Color::Rgb(127, 187, 179),
+            panel_bg: Color::Rgb(30, 35, 38),
+            sidebar_bg: Color::Reset,
+            active_row_bg: Color::Rgb(46, 56, 60),
+            selection_bg: Color::Rgb(65, 75, 80),
+            surface0: Color::Rgb(55, 65, 69),
+            surface1: Color::Rgb(65, 75, 80),
+            surface_dim: Color::Rgb(39, 46, 51),
+            overlay0: Color::Rgb(157, 169, 160),
+            overlay1: Color::Rgb(184, 196, 176),
+            text: Color::Rgb(211, 198, 170),
+            subtext0: Color::Rgb(157, 169, 160),
+            mauve: Color::Rgb(214, 153, 182),
+            green: Color::Rgb(167, 192, 128),
+            yellow: Color::Rgb(219, 188, 127),
+            red: Color::Rgb(230, 126, 128),
+            blue: Color::Rgb(127, 187, 179),
+            teal: Color::Rgb(131, 192, 146),
+            peach: Color::Rgb(230, 152, 117),
+        }
+    }
+
+    /// Everforest Light (medium).
+    pub fn everforest_light() -> Self {
+        Self {
+            accent: Color::Rgb(58, 148, 197),
+            panel_bg: Color::Rgb(242, 239, 223),
+            sidebar_bg: Color::Reset,
+            active_row_bg: Color::Rgb(230, 226, 204),
+            selection_bg: Color::Rgb(224, 220, 199),
+            surface0: Color::Rgb(230, 226, 204),
+            surface1: Color::Rgb(224, 220, 199),
+            surface_dim: Color::Rgb(239, 235, 212),
+            overlay0: Color::Rgb(147, 159, 145),
+            overlay1: Color::Rgb(130, 145, 129),
+            text: Color::Rgb(92, 106, 114),
+            subtext0: Color::Rgb(147, 159, 145),
+            mauve: Color::Rgb(223, 105, 186),
+            green: Color::Rgb(141, 161, 1),
+            yellow: Color::Rgb(223, 160, 0),
+            red: Color::Rgb(248, 85, 82),
+            blue: Color::Rgb(58, 148, 197),
+            teal: Color::Rgb(53, 167, 124),
+            peach: Color::Rgb(245, 125, 38),
+        }
+    }
+
     /// Resolve a theme by name. Returns None for unknown names.
     pub fn from_name(name: &str) -> Option<Self> {
         match crate::config::canonical_theme_name(name)? {
@@ -545,6 +595,8 @@ impl Palette {
             "rose-pine" => Some(Self::rose_pine()),
             "rose-pine-dawn" => Some(Self::rose_pine_dawn()),
             "vesper" => Some(Self::vesper()),
+            "everforest" => Some(Self::everforest()),
+            "everforest-light" => Some(Self::everforest_light()),
             _ => None,
         }
     }
@@ -1467,7 +1519,16 @@ mod tests {
 
     #[test]
     fn light_theme_aliases_resolve() {
-        for name in ["light", "latte", "tokyo-day", "onelight", "lotus", "dawn"] {
+        for name in [
+            "light",
+            "latte",
+            "tokyo-day",
+            "onelight",
+            "lotus",
+            "dawn",
+            "everforest-dark",
+            "everforest-light",
+        ] {
             assert!(
                 Palette::from_name(name).is_some(),
                 "theme should resolve: {name}"
