@@ -1427,9 +1427,14 @@
         },
         {
           "key": "worktrees.startup_panes",
-          "type": "string",
+          "type": "enum",
           "default": "\"auto\"",
-          "description": "Seed one pane per sibling worktree when the startup directory belongs to a repository with linked worktrees. \"auto\" only runs when at least one linked worktree exists; \"on\" forces the seeding path; \"off\" disables the behavior."
+          "description": "Seed one pane per sibling worktree when the startup directory belongs to a repository with linked worktrees. \"auto\" only runs when at least one linked worktree exists; \"on\" forces the seeding path; \"off\" disables the behavior.",
+          "values": [
+            "auto",
+            "on",
+            "off"
+          ]
         },
         {
           "key": "worktrees.startup_pane_limit",
