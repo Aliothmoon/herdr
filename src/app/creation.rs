@@ -223,8 +223,7 @@ impl App {
             let new_pane_id = new_pane.pane_id;
             self.terminal_runtimes
                 .insert(new_pane.terminal.id.clone(), new_pane.runtime);
-            self.state
-                .remove_alias_shadowed_by_new_pane(new_pane_id);
+            self.state.remove_alias_shadowed_by_new_pane(new_pane_id);
             self.state
                 .terminals
                 .insert(new_pane.terminal.id.clone(), new_pane.terminal);
