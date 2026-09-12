@@ -1424,6 +1424,18 @@
           "type": "string",
           "default": "\"~/.herdr/worktrees\"",
           "description": "Root directory under which Herdr creates <repo>/<branch-slug> checkouts."
+        },
+        {
+          "key": "worktrees.startup_panes",
+          "type": "string",
+          "default": "\"auto\"",
+          "description": "Seed one pane per sibling worktree when the startup directory belongs to a repository with linked worktrees. \"auto\" only runs when at least one linked worktree exists; \"on\" forces the seeding path; \"off\" disables the behavior."
+        },
+        {
+          "key": "worktrees.startup_pane_limit",
+          "type": "integer",
+          "default": "6",
+          "description": "Maximum number of automatically seeded worktree panes. Additional worktrees are skipped with a log line."
         }
       ]
     },
