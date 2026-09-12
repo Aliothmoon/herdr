@@ -73,3 +73,69 @@ jobs:
           $ErrorActionPreference = "Stop"
           $exe = Join-Path $PWD "target\debug\herdr.exe"
           .\scripts\windows_smoke_conpty_path.ps1 -ExePath $exe -Session "ci-dev-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+
+  build:
+    name: build (windows)
+    runs-on: windows-latest
+    needs: check
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.16.0
+          use-cache: false
+
+      - name: Restore Zig build cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .zig-cache
+          key: zig-build-v1-${{ runner.os }}-${{ runner.arch }}-0.16.0-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            zig-build-v1-${{ runner.os }}-${{ runner.arch }}-0.16.0-
+
+      - name: Restore cargo cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          cache-bin: false
+          key: windows-dev-build
+
+      - name: Build release binary
+        run: cargo build --release --locked --target x86_64-pc-windows-msvc
+
+      - name: Package artifact
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $package = Join-Path $env:RUNNER_TEMP "Microsoft.Windows.Console.ConPTY.nupkg"
+          $stage = Join-Path $env:RUNNER_TEMP "herdr-windows-x86_64"
+          .\scripts\package_windows_conpty.ps1 `
+            -HerdrExe target\x86_64-pc-windows-msvc\release\herdr.exe `
+            -PackagePath $package `
+            -StageDir $stage `
+            -OutputPath herdr-windows-x86_64.zip
+          "commit=$env:GITHUB_SHA" | Out-File -Encoding utf8 BUILD_INFO.txt
+          "target=x86_64-pc-windows-msvc" | Out-File -Encoding utf8 -Append BUILD_INFO.txt
+          "branch=$env:GITHUB_REF_NAME" | Out-File -Encoding utf8 -Append BUILD_INFO.txt
+          $hash = (Get-FileHash -Algorithm SHA256 herdr-windows-x86_64.zip).Hash.ToLowerInvariant()
+          "sha256=$hash  herdr-windows-x86_64.zip" | Out-File -Encoding utf8 -Append BUILD_INFO.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: herdr-dev-windows-x86_64
+          path: |
+            herdr-windows-x86_64.zip
+            BUILD_INFO.txt
+          retention-days: 14
