@@ -51,7 +51,7 @@ pub fn run_server() -> io::Result<()> {
             api_rx,
             event_hub,
         );
-        seed_startup_workspace_if_empty(&mut app);
+        seed_startup_workspace_if_empty(&mut app, &loaded_config.config.worktrees);
 
         // Create the headless server.
         let mut server = match HeadlessServer::new(
@@ -86,7 +86,7 @@ pub fn run_server() -> io::Result<()> {
     result
 }
 
-fn seed_startup_workspace_if_empty(app: &mut app::App) {
+fn seed_startup_workspace_if_empty(app: &mut app::App, worktrees_config: &config::WorktreesConfig) {
     let Some(cwd) = take_startup_cwd() else {
         return;
     };
@@ -100,14 +100,54 @@ fn seed_startup_workspace_if_empty(app: &mut app::App) {
     }
 
     match app.create_workspace_with_options(cwd.clone(), true) {
-        Ok(_) => {
+        Ok(ws_idx) => {
             info!(cwd = %cwd.display(), "created startup workspace");
+            seed_startup_worktree_panes(app, ws_idx, worktrees_config, &cwd);
         }
         Err(err) => {
             warn!(cwd = %cwd.display(), err = %err, "failed to create startup workspace");
             app.state.mode = app::Mode::Navigate;
         }
     }
+}
+
+/// Open one pane per sibling worktree after the startup workspace is created.
+/// Detection failures degrade silently to a single-pane workspace.
+fn seed_startup_worktree_panes(
+    app: &mut app::App,
+    ws_idx: usize,
+    config: &config::WorktreesConfig,
+    cwd: &Path,
+) {
+    if config.startup_panes == config::WorktreeStartupPanesConfig::Off {
+        return;
+    }
+    let panes = match crate::worktree::startup_worktree_panes(cwd, false) {
+        Ok(panes) => panes,
+        Err(err) => {
+            info!(
+                cwd = %cwd.display(),
+                err = %err,
+                "worktree detection failed; skipping startup worktree panes"
+            );
+            return;
+        }
+    };
+    if panes.is_empty() {
+        return;
+    }
+    if panes.len() > config.startup_pane_limit {
+        info!(
+            total = panes.len(),
+            limit = config.startup_pane_limit,
+            "capping startup worktree panes"
+        );
+    }
+    let bounded: Vec<_> = panes
+        .into_iter()
+        .take(config.startup_pane_limit.max(1))
+        .collect();
+    app.seed_startup_worktree_panes(ws_idx, &bounded);
 }
 
 fn take_startup_cwd() -> Option<PathBuf> {

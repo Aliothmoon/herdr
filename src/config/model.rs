@@ -834,6 +834,23 @@ pub struct IndexedKeysConfig {
 pub struct WorktreesConfig {
     /// Root directory under which Herdr creates <repo>/<branch-slug> checkouts.
     pub directory: String,
+    /// Seed one pane per sibling worktree when the startup directory belongs to
+    /// a repository with linked worktrees. `auto` only runs when at least one
+    /// linked worktree exists; `on` also opens them for plain repos (no-op);
+    /// `off` disables the behavior. Default: `auto`.
+    pub startup_panes: WorktreeStartupPanesConfig,
+    /// Maximum number of automatically seeded worktree panes. Additional
+    /// worktrees are skipped with a log line. Default: 6.
+    pub startup_pane_limit: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WorktreeStartupPanesConfig {
+    #[default]
+    Auto,
+    On,
+    Off,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
@@ -1151,6 +1168,8 @@ impl Default for WorktreesConfig {
     fn default() -> Self {
         Self {
             directory: "~/.herdr/worktrees".into(),
+            startup_panes: WorktreeStartupPanesConfig::default(),
+            startup_pane_limit: 6,
         }
     }
 }

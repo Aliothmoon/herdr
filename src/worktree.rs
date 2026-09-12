@@ -16,6 +16,66 @@ pub(crate) struct ExistingWorktree {
     pub is_bare: bool,
     pub is_detached: bool,
     pub is_prunable: bool,
+    /// First block of `git worktree list --porcelain` output; the main working tree.
+    pub is_main: bool,
+    pub locked: bool,
+}
+
+/// A worktree that should receive an automatically seeded startup pane.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StartupWorktreePane {
+    pub path: PathBuf,
+    pub label: String,
+}
+
+/// Decide which sibling worktrees around `cwd` deserve an automatic startup pane.
+///
+/// Returns an empty list unless `cwd` sits inside a repository with at least one
+/// linked worktree. The worktree containing `cwd` itself is excluded (the initial
+/// workspace pane already covers it), bare and prunable entries are skipped, and
+/// the main worktree is listed first.
+pub(crate) fn startup_worktree_panes(
+    cwd: &Path,
+    trust_repository: bool,
+) -> Result<Vec<StartupWorktreePane>, String> {
+    let entries = list_existing_worktrees(cwd, trust_repository)?;
+    if entries.iter().all(|entry| entry.is_main) {
+        return Ok(Vec::new());
+    }
+
+    let cwd_canonical = canonical_or_original(cwd);
+    let mut panes = Vec::new();
+    for entry in entries {
+        if entry.is_bare || entry.is_prunable || entry.locked {
+            continue;
+        }
+        if canonical_or_original(&entry.path) == cwd_canonical {
+            continue;
+        }
+        let label = worktree_pane_label(&entry);
+        panes.push((
+            entry.is_main,
+            StartupWorktreePane {
+                path: canonical_or_original(&entry.path),
+                label,
+            },
+        ));
+    }
+    panes.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.path.cmp(&b.1.path)));
+    Ok(panes.into_iter().map(|(_, pane)| pane).collect())
+}
+
+fn worktree_pane_label(entry: &ExistingWorktree) -> String {
+    if let Some(branch) = entry.branch.as_deref() {
+        if !branch.is_empty() {
+            return branch.to_string();
+        }
+    }
+    entry
+        .path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| entry.path.display().to_string())
 }
 
 pub(crate) fn generated_branch_slug(seed: u64) -> String {
@@ -426,25 +486,31 @@ pub(crate) fn parse_worktree_list_porcelain(output: &str) -> Vec<ExistingWorktre
     let mut is_bare = false;
     let mut is_detached = false;
     let mut is_prunable = false;
+    let mut locked = false;
 
     let finish = |entries: &mut Vec<ExistingWorktree>,
                   path: &mut Option<PathBuf>,
                   branch: &mut Option<String>,
                   is_bare: &mut bool,
                   is_detached: &mut bool,
-                  is_prunable: &mut bool| {
+                  is_prunable: &mut bool,
+                  locked: &mut bool| {
         if let Some(path) = path.take() {
+            let is_main = entries.is_empty();
             entries.push(ExistingWorktree {
                 path,
                 branch: branch.take(),
                 is_bare: *is_bare,
                 is_detached: *is_detached,
                 is_prunable: *is_prunable,
+                is_main,
+                locked: *locked,
             });
         }
         *is_bare = false;
         *is_detached = false;
         *is_prunable = false;
+        *locked = false;
     };
 
     for line in output.lines() {
@@ -456,6 +522,7 @@ pub(crate) fn parse_worktree_list_porcelain(output: &str) -> Vec<ExistingWorktre
                 &mut is_bare,
                 &mut is_detached,
                 &mut is_prunable,
+                &mut locked,
             );
             continue;
         }
@@ -474,6 +541,8 @@ pub(crate) fn parse_worktree_list_porcelain(output: &str) -> Vec<ExistingWorktre
             is_bare = true;
         } else if line.starts_with("prunable") {
             is_prunable = true;
+        } else if line == "locked" || line.starts_with("locked ") {
+            locked = true;
         }
     }
 
@@ -484,6 +553,7 @@ pub(crate) fn parse_worktree_list_porcelain(output: &str) -> Vec<ExistingWorktre
         &mut is_bare,
         &mut is_detached,
         &mut is_prunable,
+        &mut locked,
     );
     entries
 }
@@ -594,6 +664,11 @@ HEAD fed
 detached
 prunable stale
 
+worktree /repo/locked
+HEAD 012
+branch refs/heads/locked-branch
+locked reason
+
 ";
 
         assert_eq!(
@@ -605,6 +680,8 @@ prunable stale
                     is_bare: false,
                     is_detached: false,
                     is_prunable: false,
+                    is_main: true,
+                    locked: false,
                 },
                 ExistingWorktree {
                     path: PathBuf::from("/repo/issue"),
@@ -612,6 +689,8 @@ prunable stale
                     is_bare: false,
                     is_detached: false,
                     is_prunable: false,
+                    is_main: false,
+                    locked: false,
                 },
                 ExistingWorktree {
                     path: PathBuf::from("/repo/detached"),
@@ -619,9 +698,83 @@ prunable stale
                     is_bare: false,
                     is_detached: true,
                     is_prunable: true,
+                    is_main: false,
+                    locked: false,
+                },
+                ExistingWorktree {
+                    path: PathBuf::from("/repo/locked"),
+                    branch: Some("locked-branch".into()),
+                    is_bare: false,
+                    is_detached: false,
+                    is_prunable: false,
+                    is_main: false,
+                    locked: true,
                 },
             ]
         );
+    }
+
+    #[test]
+    fn startup_worktree_panes_lists_siblings_and_excludes_cwd() {
+        let repo = create_committed_repo("startup-wt");
+        let sibling_a = unique_temp_path("startup-wt-a");
+        let sibling_b = unique_temp_path("startup-wt-b");
+        run_git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "--quiet",
+                "-b",
+                "feature-a",
+                sibling_a.to_string_lossy().as_ref(),
+            ],
+        );
+        run_git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "--quiet",
+                "-b",
+                "feature-b",
+                sibling_b.to_string_lossy().as_ref(),
+            ],
+        );
+
+        // From the main worktree: only the linked siblings, sorted by path.
+        let from_main = startup_worktree_panes(&repo, false).unwrap();
+        let mut expected = vec![
+            (sibling_a.clone(), "feature-a"),
+            (sibling_b.clone(), "feature-b"),
+        ];
+        expected.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(
+            from_main,
+            expected
+                .into_iter()
+                .map(|(path, label)| StartupWorktreePane {
+                    path: canonical_or_original(&path),
+                    label: label.to_string(),
+                })
+                .collect::<Vec<_>>()
+        );
+
+        // From a linked worktree: the main worktree comes first, other siblings after.
+        let from_linked = startup_worktree_panes(&sibling_a, false).unwrap();
+        assert_eq!(from_linked.len(), 2);
+        assert!(canonical_or_original(&from_linked[0].path) == canonical_or_original(&repo));
+        assert!(from_linked[0].label == "master" || from_linked[0].label == "main");
+        assert_eq!(
+            canonical_or_original(&from_linked[1].path),
+            canonical_or_original(&sibling_b)
+        );
+    }
+
+    #[test]
+    fn startup_worktree_panes_empty_for_plain_repo() {
+        let repo = create_committed_repo("startup-wt-plain");
+        assert!(startup_worktree_panes(&repo, false).unwrap().is_empty());
     }
 
     #[test]

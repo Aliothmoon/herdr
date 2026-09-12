@@ -160,6 +160,94 @@ impl App {
         Ok(idx)
     }
 
+    /// Seed one pane per sibling worktree into a freshly created startup workspace.
+    ///
+    /// Mirrors the internal split path used by the layouts API: split the root
+    /// pane to the right without moving focus, attach the new terminal, and
+    /// label it with the worktree branch name. Failures stop the seeding early
+    /// and keep whatever panes were already created.
+    pub(crate) fn seed_startup_worktree_panes(
+        &mut self,
+        ws_idx: usize,
+        panes: &[crate::worktree::StartupWorktreePane],
+    ) {
+        let Some(root_pane) = self
+            .state
+            .workspaces
+            .get(ws_idx)
+            .and_then(|ws| ws.tabs.first())
+            .map(|tab| tab.root_pane)
+        else {
+            return;
+        };
+
+        let mut created = 0usize;
+        for pane in panes {
+            let (rows, cols) = self.state.estimate_pane_size();
+            let default_shell = self.state.default_shell.clone();
+            let scrollback_limit_bytes = self.state.pane_scrollback_limit_bytes;
+            let host_terminal_theme = self.state.host_terminal_theme;
+            let host_terminal_appearance = self.state.host_terminal_appearance;
+            let shell_config =
+                crate::pane::PaneShellConfig::new(&default_shell, self.state.shell_mode);
+            let split_result = {
+                let Some(ws) = self.state.workspaces.get_mut(ws_idx) else {
+                    break;
+                };
+                ws.split_pane(
+                    root_pane,
+                    ratatui::layout::Direction::Horizontal,
+                    rows,
+                    cols,
+                    Some(pane.path.clone()),
+                    scrollback_limit_bytes,
+                    host_terminal_theme,
+                    host_terminal_appearance,
+                    shell_config,
+                    Vec::new(),
+                    false,
+                )
+            };
+            let (_, new_pane) = match split_result {
+                Some(Ok(result)) => result,
+                Some(Err(err)) => {
+                    tracing::warn!(
+                        path = %pane.path.display(),
+                        err = %err,
+                        "failed to seed worktree pane"
+                    );
+                    break;
+                }
+                None => break,
+            };
+            let new_pane_id = new_pane.pane_id;
+            self.terminal_runtimes
+                .insert(new_pane.terminal.id.clone(), new_pane.runtime);
+            self.state
+                .remove_alias_shadowed_by_new_pane(new_pane_id);
+            self.state
+                .terminals
+                .insert(new_pane.terminal.id.clone(), new_pane.terminal);
+            if let Some(terminal_id) = self
+                .state
+                .workspaces
+                .get(ws_idx)
+                .and_then(|ws| ws.terminal_id(new_pane_id))
+                .cloned()
+            {
+                if let Some(terminal) = self.state.terminals.get_mut(&terminal_id) {
+                    terminal.set_manual_label(pane.label.clone());
+                }
+            }
+            created += 1;
+        }
+
+        if created > 0 {
+            tracing::info!(count = created, "seeded startup worktree panes");
+            self.schedule_session_save();
+        }
+    }
+
     pub(super) fn collect_panes_for_workspace(
         &self,
         workspace_id: Option<&str>,
